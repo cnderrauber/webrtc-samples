@@ -11,11 +11,15 @@
 const startButton = document.getElementById('startButton');
 const callButton = document.getElementById('callButton');
 const hangupButton = document.getElementById('hangupButton');
+const l1t3button = document.getElementById('l1t3Button');
+const l3t3button = document.getElementById('l3t3Button');
 callButton.disabled = true;
 hangupButton.disabled = true;
 startButton.addEventListener('click', start);
 callButton.addEventListener('click', call);
 hangupButton.addEventListener('click', hangup);
+l1t3button.addEventListener('click', switchToL1t3);
+l3t3button.addEventListener('click', switchToL3t3);
 
 let startTime;
 const localVideo = document.getElementById('localVideo');
@@ -40,6 +44,7 @@ remoteVideo.addEventListener('resize', () => {
   }
 });
 
+let transceiver;
 let localStream;
 let pc1;
 let pc2;
@@ -95,7 +100,28 @@ async function call() {
   pc2.addEventListener('iceconnectionstatechange', e => onIceStateChange(pc2, e));
   pc2.addEventListener('track', gotRemoteStream);
 
-  localStream.getTracks().forEach(track => pc1.addTrack(track, localStream));
+  localStream.getTracks().forEach(track => {
+    if (track.kind == 'video') {
+      transceiver = pc1.addTransceiver(track, {
+        direction: 'sendonly',
+        sendEncodings: [
+          { rid: 'f', active: true, maxBitrate: 900000, scalabilityMode: 'L1T3' },
+        ],
+        streams: [localStream],
+      })
+      var availSendCodecs = RTCRtpSender.getCapabilities("video").codecs;
+      var codecs = [];
+      availSendCodecs.forEach(codec => {
+        if (codec.mimeType == "video/AV1") {
+          codecs.push(codec);
+        }
+      });
+
+      transceiver.setCodecPreferences(codecs);
+    } else {
+      pc1.addTransceiver(track, { direction: 'sendonly' , streams: [localStream]});
+    }
+  });
   console.log('Added local stream to pc1');
 
   try {
@@ -211,4 +237,19 @@ function hangup() {
   pc2 = null;
   hangupButton.disabled = true;
   callButton.disabled = false;
+}
+
+function switchToL1t3() {
+  var params = transceiver.sender.getParameters();
+  var encodings = params.encodings;
+  encodings[0].scalabilityMode = "L1T3";
+  transceiver.sender.setParameters(params);
+}
+
+function switchToL3t3() {
+  var params = transceiver.sender.getParameters();
+  var encodings = params.encodings;
+  encodings[0].scalabilityMode = "L3T3_KEY";
+  transceiver.sender.setParameters(params);
+  console.log('params', params);
 }
